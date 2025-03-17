@@ -1,4 +1,5 @@
 from randcrack import randcrack, RandCrack
+from copy import deepcopy, copy
 
 
 def _int32(x):
@@ -63,6 +64,8 @@ class MT19937:
         return self.mt
     def re_twist(self,mt):
         re_tw=[0]*624#生成列表
+        a=deepcopy(mt[623])
+        c=deepcopy(mt[396])
         for i in range(623,-1,-1):#从大到小遍历，以便twist[(i+397)%624]是符合条件的
             k=mt[i]^mt[(i+397) % 624]
             if (k&0x80000000)>>31==1:#判断y>>1的第一位
@@ -82,37 +85,43 @@ class MT19937:
                     mt[(i + 1) % 624] = re_tw[(i + 1) % 624]
 
         return re_tw
-
-if __name__ == '__main__':
-    def extract(mt):
-        M=[]
-        for y in mt:
-            y = y ^ y >> 11
-            y = y ^ y << 7 & 2636928640
-            y = y ^ y << 15 & 4022730752
-            y = y ^ y >> 18
-            M.append(y)
-        return M
-    seed = 1123
-    # 初始化 MT19937 生成器
-    rng = MT19937(seed)
-    M1, M2 = [], []
-    # 提取 1248 个随机数，前 624 个存入 M1，后 624 个存入 M2
-    for i in range(1248):
-        num = rng.extract_number()
-        if i < 624:
-            M1.append(num)
+def re_tw1(mt):
+    high=0x80000000
+    low=0x7fffffff
+    mask=0x9908b0df
+    for i in range(623,-1,-1):
+        t=mt[i]^mt[(i+397) % 624]
+        if t&high==high:
+            t=t^mask
+            t=t<<1
+            t|=1#确定位奇数
         else:
-            M2.append(num)
-    print("M1:", M1)
-    print("M2:", M2)
-
-
+            t=t<<1
+        res=t&high #取得高位
+        t=mt[i-1]^mt[(i+396) % 624]
+        if t&high==high:
+            t=t^mask
+            t=t<<1
+            t|=1
+        else:
+            t=t<<1
+        res=res+(t&low)
+        mt[i]=res
+    return mt
+if __name__ == '__main__':
+    M1 = []
+    M2 = []
+    rng = MT19937(seed=1123)
+    for i in range(1248):
+        a = rng.extract_number()
+        if i < 624:
+            M1.append(a)
+        else:
+            M2.append(a)
+    print(f'M1={M1}')
+    print(f'M2={M2}')
     pre = MT19937()
-    state = pre.re_state(M2)
-    recovered_state = pre.re_twist(state)
-    pre.mt = pre.re_state(M1)
-    print(recovered_state)
-    print(pre.mt)
-    M_1 = [pre.extract_number() for _ in range(624)]
-    print("Recovered M1:", M_1)
+    m = pre.re_state(M2)
+    pre.mt=re_tw1(m)
+    print(f'pre.mt={pre.mt}')
+    print("预测 RNG:", [pre.extract_number(x=1) for _ in range(10)])
